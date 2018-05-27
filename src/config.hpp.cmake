@@ -1,0 +1,7 @@
+#ifndef LOAD_SRC_CONFIG_HPP_
+#define LOAD_SRC_CONFIG_HPP_
+
+#cmakedefine LIBLOAD_ENABLE_PE32_SUPPORT
+#cmakedefine LIBLOAD_ENABLE_PE64_SUPPORT
+
+#endif
