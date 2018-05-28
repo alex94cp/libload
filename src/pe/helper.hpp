@@ -16,7 +16,7 @@ using PEFwdProc = DWORD (__stdcall *)(HINSTANCE, DWORD, LPVOID);
 struct PEHelperParams
 {
 	PEFwdProc fwd_proc;
-	HINSTANCE hinstance;
+	HINSTANCE h_instance;
 	DWORD     fdw_reason;
 	LPVOID    lpv_reserved;
 };

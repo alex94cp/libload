@@ -1,34 +1,8 @@
-#include <config.hpp>
 #include "memory.hpp"
-
-#include <load/module.hpp>
-
-#if defined(LIBLOAD_ENABLE_PE64_SUPPORT) || defined(LIBLOAD_ENABLE_PE32_SUPPORT)
-#	include "pe/module.hpp"
-#endif
 
 #include <algorithm>
 
-namespace load {
-
-std::shared_ptr<Module> load_module(const MemoryBuffer   & module_data,
-                                    const ModuleProvider & module_provider,
-                                    MemoryManager        & memory_manager)
-{
-#ifdef LIBLOAD_ENABLE_PE64_SUPPORT
-	if (detail::is_valid_pe_module_64(module_data))
-		return detail::load_pe_module_64(module_data, module_provider, memory_manager);
-#endif
-
-#ifdef LIBLOAD_ENABLE_PE32_SUPPORT
-	if (detail::is_valid_pe_module_32(module_data))
-		return detail::load_pe_module_32(module_data, module_provider, memory_manager);
-#endif
-
-	return nullptr;
-}
-
-namespace detail {
+namespace load::detail {
 
 MemoryBlock::MemoryBlock(MemoryManager & mem_manager,
                          void * mem, std::size_t size)
@@ -88,4 +62,4 @@ std::size_t MemoryBlock::write(std::size_t offset, std::size_t size, const void 
 	return _mem_manager->copy_into(from_buffer, bytes_to_write, _mem_pointer + offset);
 }
 
-} }
+}

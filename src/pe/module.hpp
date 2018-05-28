@@ -1,7 +1,7 @@
 #ifndef LOAD_SRC_PE_MODULE_HPP_
 #define LOAD_SRC_PE_MODULE_HPP_
 
-#include <load/module.hpp>
+#include <load/memory_module.hpp>
 
 namespace load::detail {
 

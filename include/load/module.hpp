@@ -4,7 +4,6 @@
 #include <load/memory.hpp>
 
 #include <cstddef>
-#include <memory>
 #include <string_view>
 
 namespace load {
@@ -39,11 +38,6 @@ public:
 };
 
 LOAD_EXPORT extern const ModuleProvider & system_module_provider;
-
-LOAD_EXPORT std::shared_ptr<Module>
-	load_module(const MemoryBuffer   & module_data,
-	            const ModuleProvider & module_provider = system_module_provider,
-	            MemoryManager        & memory_manager  = local_memory_manager);
 
 namespace detail {
 

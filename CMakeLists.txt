@@ -13,7 +13,7 @@ configure_file(src/config.hpp.cmake src/config.hpp)
 
 find_package(Boost REQUIRED COMPONENTS iostreams unit_test_framework)
 
-add_library(load src/memory.cpp src/mapped_file.cpp)
+add_library(load src/memory.cpp src/mapped_file.cpp src/memory_module.cpp)
 
 if(WIN32)
 	target_sources(load PRIVATE src/windows/memory.cpp

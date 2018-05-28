@@ -11,13 +11,17 @@
 namespace load::detail {
 
 template <unsigned int XX>
-class PEModule final : public Module
+class PEModule final : public MemoryModule
 {
 public:
 	explicit PEModule(const MemoryBuffer   & image_data,
 	                  MemoryManager        & mem_manager,
 	                  const ModuleProvider & mod_provider);
 	virtual ~PEModule();
+
+	virtual const void * base() const override;
+	virtual void notify_thread_init() override;
+	virtual void notify_thread_exit() override;
 
 protected:
 	virtual DataPtr get_data_address(std::string_view name) const override;
@@ -101,12 +105,36 @@ PEModule<XX>::PEModule(const MemoryBuffer   & image_data,
 		}() }
 	, _image_buf { _image_mem }
 	, _image { _image_buf }
-{}
+{
+	if (!detail::notify_dll_event(_image, _image_mem, DLL_PROCESS_ATTACH))
+		throw std::runtime_error("Module initialization failed");
+
+	detail::notify_dll_event(_image, _image_mem, DLL_THREAD_ATTACH);
+}
 
 template <unsigned int XX>
 PEModule<XX>::~PEModule()
 {
-	detail::deinitialize_pe_image(_image, _image_mem);
+	detail::notify_dll_event(_image, _image_mem, DLL_THREAD_DETACH);
+	detail::notify_dll_event(_image, _image_mem, DLL_PROCESS_DETACH);
+}
+
+template <unsigned int XX>
+const void * PEModule<XX>::base() const
+{
+	return _image_mem.data();
+}
+
+template <unsigned int XX>
+void PEModule<XX>::notify_thread_init()
+{
+	detail::notify_dll_event(_image, _image_mem, DLL_THREAD_ATTACH);
+}
+
+template <unsigned int XX>
+void PEModule<XX>::notify_thread_exit()
+{
+	detail::notify_dll_event(_image, _image_mem, DLL_THREAD_DETACH);
 }
 
 template <unsigned int XX>
