@@ -103,17 +103,14 @@ PEModule<XX>::PEModule(const MemoryBuffer   & image_data,
 		}() }
 	, _image { _image_mem }
 {
-	if (!detail::notify_dll_event(_image, _image_mem, DLL_PROCESS_ATTACH))
+	if (!detail::initialize_dll(_image, _image_mem))
 		throw std::runtime_error("Module initialization failed");
-
-	detail::notify_dll_event(_image, _image_mem, DLL_THREAD_ATTACH);
 }
 
 template <unsigned int XX>
 PEModule<XX>::~PEModule()
 {
-	detail::notify_dll_event(_image, _image_mem, DLL_THREAD_DETACH);
-	detail::notify_dll_event(_image, _image_mem, DLL_PROCESS_DETACH);
+	detail::deinitialize_dll(_image, _image_mem);
 }
 
 template <unsigned int XX>
@@ -125,13 +122,15 @@ const void * PEModule<XX>::base() const
 template <unsigned int XX>
 void PEModule<XX>::notify_thread_init()
 {
-	detail::notify_dll_event(_image, _image_mem, DLL_THREAD_ATTACH);
+	if (_image_mem.memory_manager().allows_direct_addressing())
+		detail::notify_dll_event_direct(_image, _image_mem.data(), DLL_THREAD_ATTACH);
 }
 
 template <unsigned int XX>
 void PEModule<XX>::notify_thread_exit()
 {
-	detail::notify_dll_event(_image, _image_mem, DLL_THREAD_DETACH);
+	if (_image_mem.memory_manager().allows_direct_addressing())
+		detail::notify_dll_event_direct(_image, _image_mem.data(), DLL_THREAD_DETACH);
 }
 
 template <unsigned int XX>

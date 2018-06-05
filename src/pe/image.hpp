@@ -1,7 +1,6 @@
 #ifndef LOAD_SRC_PE_IMAGE_HPP_
 #define LOAD_SRC_PE_IMAGE_HPP_
 
-#include "helper.hpp"
 #include "../memory.hpp"
 #include <load/module.hpp>
 
@@ -241,32 +240,49 @@ MemoryBlock load_pe_image(const MemoryBuffer   & image_data,
 
 template <class PEVirtualImage>
 void invoke_pe_tls_callbacks_direct(const PEVirtualImage & image,
-                                    MemoryBlock & image_mem,
-                                    DWORD event, void * reserved)
+                                    void * image_base, DWORD event,
+                                    void * reserved)
 {
-	assert(image_mem.memory_manager().allows_direct_addressing());
-
+	char * const image_ptr = static_cast<char *>(image_base);
 	if (const auto tls_dir = image.tls_directory()) {
 		for (const auto fn_rva : tls_dir->callbacks()) {
-			void * const fn_ptr = image_mem.data() + fn_rva.value();
+			void * const fn_ptr = image_ptr + fn_rva.value();
 			const auto tls_fn = reinterpret_cast<TlsCallback>(fn_ptr);
-			tls_fn(image_mem.data(), event, reserved);
+			tls_fn(image_base, event, reserved);
 		}
 	}
 }
 
 template <class PEVirtualImage>
 int invoke_dll_entry_point_direct(const PEVirtualImage & image,
-                                  MemoryBlock & image_mem, DWORD event,
+                                  void * image_base, DWORD event,
                                   void * reserved)
 {
 	assert(image.type() == peplus::ImageType::Dynamic);
-	assert(image_mem.memory_manager().allows_direct_addressing());
 
 	const auto opt_header = image.optional_header();
+	char * const image_ptr = static_cast<char *>(image_base);
 	const std::size_t ep_rva = opt_header.address_of_entry_point;
-	const auto dll_main = reinterpret_cast<DllMain>(image_mem.data() + ep_rva);
-	return dll_main(image_mem.data(), event, reserved);
+	const auto dll_main = reinterpret_cast<DllMain>(image_ptr + ep_rva);
+	return dll_main(image_base, event, reserved);
+}
+
+template <class PEImage>
+int notify_dll_event_direct(const PEImage & image, void * image_base,
+                            DWORD event, void * reserved = nullptr)
+{
+	invoke_pe_tls_callbacks_direct(image, image_base, event, reserved);
+	return invoke_dll_entry_point_direct(image, image_base, event, reserved);
+}
+
+template <class PEImage>
+bool initialize_dll_direct(const PEImage & image, void * image_base)
+{
+	if (!notify_dll_event_direct(image, image_base, DLL_PROCESS_ATTACH))
+		return false;
+
+	notify_dll_event_direct(image, image_base, DLL_THREAD_ATTACH);
+	return true;
 }
 
 template <class PEImage>
@@ -282,102 +298,55 @@ const void * find_pe_exported_symbol(const PEImage & image,
 	return image_mem.data() + export_info->address.value();
 }
 
-template <class PEVirtualImage>
-int invoke_pe_trampoline_helper(const PEVirtualImage & image, MemoryBlock & image_mem,
-                                const void * trampoline_ptr, MemoryBlock & params_mem,
-                                const void * fn_ptr, DWORD event, void * reserved)
-{
-	PEHelperParams helper_params;
-	helper_params.fdw_reason = event;
-	helper_params.lpv_reserved = reserved;
-	helper_params.h_instance = image_mem.data();
-	helper_params.fwd_proc = reinterpret_cast<PEFwdProc>(fn_ptr);
-	params_mem.write(0, &helper_params, sizeof(helper_params));
-
-	MemoryManager & mem_manager = image_mem.memory_manager();
-	return mem_manager.run_async(trampoline_ptr, params_mem.data()).get();
-}
-
-template <class PEVirtualImage>
-void invoke_pe_tls_callbacks_indirect(const PEVirtualImage & image, MemoryBlock & image_mem,
-                                      const void * trampoline_ptr, MemoryBlock & params_mem,
-                                      DWORD event, void * reserved)
-{
-	if (const auto tls_dir = image.tls_directory()) {
-		for (const auto fn_rva : tls_dir->callbacks()) {
-			void * const fn_ptr = image_mem.data() + fn_rva.value();
-			invoke_pe_trampoline_helper(image, image_mem, trampoline_ptr,
-			                            params_mem, fn_ptr, event, reserved);
-		}
-	}
-}
-
-template <class PEVirtualImage>
-int invoke_dll_entry_point_indirect(const PEVirtualImage & image, MemoryBlock & image_mem,
-                                    const void * trampoline_ptr, MemoryBlock & params_mem,
-                                    DWORD event, void * reserved)
-{
-	assert(image.type() == peplus::ImageType::Dynamic);
-
-	const auto opt_header = image.optional_header();
-	const std::size_t ep_rva = opt_header.address_of_entry_point;
-	const auto dll_main = image_mem.data() + opt_header.address_of_entry_point;
-	return invoke_pe_trampoline_helper(image, image_mem, trampoline_ptr, params_mem,
-	                                   dll_main, event, reserved);
-}
-
-inline MemoryBlock allocate_pe_trampoline_params(MemoryBlock & image_mem)
-{
-	MemoryManager & mem_manager = image_mem.memory_manager();
-	void * const params_ptr = mem_manager.allocate(0, sizeof(PEHelperParams));
-	MemoryBlock params_mem { mem_manager, params_ptr, sizeof(PEHelperParams) };
-	mem_manager.commit(params_mem.data(), sizeof(PEHelperParams));
-	return params_mem;
-}
-
 template <class PEImage>
-const void * get_pe_trampoline_address(const PEImage & image, const MemoryBlock & image_mem)
+const void * get_dll_init_helper(const PEImage & image, const MemoryBlock & image_mem)
 {
-	const auto trampoline_ptr = find_pe_exported_symbol(image, image_mem, "__libload_helper");
-	if (!trampoline_ptr) {
-		throw std::runtime_error("Image initialization without direct addressing "
-		                         "requires an exported function trampoline but "
-		                         "it was not found");
+	const void * const helper = find_pe_exported_symbol(image, image_mem, "__libload_init");
+	if (!helper) {
+		throw std::runtime_error("DLL initialization without direct addressing "
+		                         "requires an exported function helper named "
+		                         "__libload_init but it wasn't found");
 	}
 
-	return trampoline_ptr;
+	return helper;
 }
 
 template <class PEImage>
-int notify_dll_event_direct(const PEImage & image, MemoryBlock & image_mem,
-                            DWORD event, void * reserved)
+bool initialize_dll(const PEImage & image, MemoryBlock & image_mem)
 {
-	assert(image_mem.memory_manager().allows_direct_addressing());
-
-	invoke_pe_tls_callbacks_direct(image, image_mem, event, reserved);
-	return invoke_dll_entry_point_direct(image, image_mem, event, reserved);
-}
-
-template <class PEImage>
-int notify_dll_event_indirect(const PEImage & image, MemoryBlock & image_mem,
-                              const void * trampoline_ptr, MemoryBlock & params_mem,
-                              DWORD event, void * reserved)
-{
-	invoke_pe_tls_callbacks_indirect(image, image_mem, trampoline_ptr, params_mem, event, reserved);
-	return invoke_dll_entry_point_indirect(image, image_mem, trampoline_ptr, params_mem, event, reserved);
-}
-
-template <class PEImage>
-int notify_dll_event(const PEImage & image, MemoryBlock & image_mem,
-                     DWORD event, void * reserved = nullptr)
-{
-	if (image_mem.memory_manager().allows_direct_addressing()) {
-		return notify_dll_event_direct(image, image_mem, event, reserved);
+	MemoryManager & mem_manager = image_mem.memory_manager();
+	if (mem_manager.allows_direct_addressing()) {
+		return initialize_dll_direct(image, image_mem.data());
 	} else {
-		MemoryBlock params_mem = allocate_pe_trampoline_params(image_mem);
-		const auto trampoline_ptr = get_pe_trampoline_address(image, image_mem);
-		return notify_dll_event_indirect(image, image_mem, trampoline_ptr,
-		                                 params_mem, event, reserved);
+		const void * const init_helper = get_dll_init_helper(image, image_mem);
+		auto init_task = mem_manager.run_async(init_helper, image_mem.data());
+		return init_task.get() >= 0;
+	}
+}
+
+template <class PEImage>
+const void * get_dll_cleanup_helper(const PEImage & image, const MemoryBlock & image_mem)
+{
+	const void * const helper = find_pe_exported_symbol(image, image_mem, "__libload_cleanup");
+	if (!helper) {
+		throw std::runtime_error("DLL deinitialization without direct addressing "
+		                         "requires an exported function helper named "
+		                         "__libload_cleanup but it wasn't found");
+	}
+
+	return helper;
+}
+
+template <class PEImage>
+void deinitialize_dll(const PEImage & image, MemoryBlock & image_mem)
+{
+	MemoryManager & mem_manager = image_mem.memory_manager();
+	if (mem_manager.allows_direct_addressing()) {
+		notify_dll_event_direct(image, image_mem.data(), DLL_THREAD_DETACH);
+		notify_dll_event_direct(image, image_mem.data(), DLL_PROCESS_DETACH);
+	} else {
+		const void * const deinit_helper = get_dll_cleanup_helper(image, image_mem);
+		mem_manager.run_async(deinit_helper, image_mem.data()).wait();
 	}
 }
 
