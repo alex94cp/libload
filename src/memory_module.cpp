@@ -11,14 +11,16 @@ std::shared_ptr<Module> load_module(const MemoryBuffer   & module_data,
                                     const ModuleProvider & module_provider,
                                     MemoryManager        & memory_manager)
 {
+	using namespace detail;
+
 #ifdef LIBLOAD_ENABLE_PE64_SUPPORT
-	if (detail::is_valid_pe_module_64(module_data))
-		return detail::load_pe_module_64(module_data, module_provider, memory_manager);
+	if (is_valid_pe_module_64(module_data))
+		return load_pe_module_64(module_data, module_provider, memory_manager);
 #endif
 
 #ifdef LIBLOAD_ENABLE_PE32_SUPPORT
-	if (detail::is_valid_pe_module_32(module_data))
-		return detail::load_pe_module_32(module_data, module_provider, memory_manager);
+	if (is_valid_pe_module_32(module_data))
+		return load_pe_module_32(module_data, module_provider, memory_manager);
 #endif
 
 	return nullptr;

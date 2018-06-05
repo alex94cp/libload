@@ -338,12 +338,18 @@ const void * get_dll_cleanup_helper(const PEImage & image, const MemoryBlock & i
 }
 
 template <class PEImage>
+void deinitialize_dll_direct(const PEImage & image, void * image_base)
+{
+	notify_dll_event_direct(image, image_base, DLL_THREAD_DETACH);
+	notify_dll_event_direct(image, image_base, DLL_PROCESS_DETACH);
+}
+
+template <class PEImage>
 void deinitialize_dll(const PEImage & image, MemoryBlock & image_mem)
 {
 	MemoryManager & mem_manager = image_mem.memory_manager();
 	if (mem_manager.allows_direct_addressing()) {
-		notify_dll_event_direct(image, image_mem.data(), DLL_THREAD_DETACH);
-		notify_dll_event_direct(image, image_mem.data(), DLL_PROCESS_DETACH);
+		deinitialize_dll_direct(image, image_mem.data());
 	} else {
 		const void * const deinit_helper = get_dll_cleanup_helper(image, image_mem);
 		mem_manager.run_async(deinit_helper, image_mem.data()).wait();

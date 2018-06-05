@@ -24,10 +24,18 @@ add_library(LibLoad::load ALIAS load)
 target_compile_features(load PUBLIC cxx_std_17)
 target_link_libraries(load PUBLIC ${Boost_IOSTREAMS_LIBRARY})
 
+add_library(loadhlp INTERFACE)
+get_filename_component(loadhlp_root_dir ${CMAKE_CURRENT_SOURCE_DIR} ABSOLUTE)
+
 if(${LIBLOAD_ENABLE_PE32_SUPPORT} OR ${LIBLOAD_ENABLE_PE64_SUPPORT})
 	find_package(PEPlus REQUIRED)
+
 	target_sources(load PRIVATE src/pe/module.cpp)
 	target_link_libraries(load PRIVATE PEPlus::peplus)
+
+	add_library(loadhlp_pe INTERFACE)
+	target_link_libraries(loadhlp_pe INTERFACE loadhlp PEPlus::peplus)
+	target_sources(loadhlp_pe INTERFACE ${loadhlp_root_dir}/src/pe/helpers.cpp)
 endif()
 
 install(TARGETS load EXPORT load_targets
@@ -39,16 +47,19 @@ install(TARGETS load EXPORT load_targets
 install(EXPORT load_targets FILE LibLoadConfig.cmake NAMESPACE LibLoad::
                             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
 
-export(EXPORT load_targets  FILE LibLoadTargets.cmake NAMESPACE LibLoad::)
+export(EXPORT  load_targets FILE LibLoadTargets.cmake NAMESPACE LibLoad::)
 
 include(GenerateExportHeader)
 generate_export_header(load EXPORT_FILE_NAME include/load/export.hpp)
 configure_file(include/load/version.hpp.cmake include/load/version.hpp)
 
-target_include_directories(load PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src ${Boost_INCLUDE_DIRS}
+target_include_directories(load PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src
                                 PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                                         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
-                                        $<INSTALL_INTERFACE:include>)
+                                        $<INSTALL_INTERFACE:include> ${Boost_INCLUDE_DIRS})
+
+target_include_directories(loadhlp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include
+                                             ${CMAKE_CURRENT_BINARY_DIR}/include)
 
 install(DIRECTORY include/load DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN *.hpp)
 install(FILES ${CMAKE_BINARY_DIR}/include/load/version.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/load)
