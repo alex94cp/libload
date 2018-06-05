@@ -26,8 +26,8 @@ target_link_libraries(load PUBLIC ${Boost_IOSTREAMS_LIBRARY})
 
 if(${LIBLOAD_ENABLE_PE32_SUPPORT} OR ${LIBLOAD_ENABLE_PE64_SUPPORT})
 	find_package(PEPlus REQUIRED)
+	target_sources(load PRIVATE src/pe/module.cpp)
 	target_link_libraries(load PRIVATE PEPlus::peplus)
-	target_sources(load PRIVATE src/pe/image.cpp src/pe/module.cpp)
 endif()
 
 install(TARGETS load EXPORT load_targets

@@ -56,7 +56,7 @@ std::size_t MemoryBlock::read(std::size_t offset, std::size_t size, void * into_
 	return _mem_manager->copy_from(_mem_pointer + offset, bytes_to_read, into_buffer);
 }
 
-std::size_t MemoryBlock::write(std::size_t offset, std::size_t size, const void * from_buffer)
+std::size_t MemoryBlock::write(std::size_t offset, const void * from_buffer, std::size_t size)
 {
 	const std::size_t bytes_to_write = std::min(_mem_size - offset, size);
 	return _mem_manager->copy_into(from_buffer, bytes_to_write, _mem_pointer + offset);

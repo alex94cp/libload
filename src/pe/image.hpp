@@ -28,20 +28,8 @@ using HINSTANCE = void *;
 using DllMain = bool (__stdcall *)(HINSTANCE, DWORD, void *);
 using TlsCallback = void (__stdcall *)(HINSTANCE, DWORD, void *);
 
-class PEPlusMemoryBufferAdapter final : public peplus::MemoryBuffer
-{
-public:
-	explicit PEPlusMemoryBufferAdapter(const load::MemoryBuffer & mem_buffer);
-
-	virtual std::size_t read(std::size_t offset, std::size_t size,
-	                         void * into_buffer) const override;
-
-private:
-	const load::MemoryBuffer * _mem_buffer;
-};
-
-template <class Image>
-MemoryBlock allocate_pe_image(const Image & image, MemoryManager & memory_manager)
+template <class PEImage>
+MemoryBlock allocate_pe_image(const PEImage & image, MemoryManager & memory_manager)
 {
 	const auto opt_header = image.optional_header();
 	const std::size_t image_size = opt_header.size_of_image;
@@ -51,8 +39,8 @@ MemoryBlock allocate_pe_image(const Image & image, MemoryManager & memory_manage
 	return MemoryBlock(memory_manager, image_mem, image_size);
 }
 
-template <unsigned int XX>
-void copy_image_headers_indirect(const peplus::FileImage<XX> & image, MemoryBlock & into_mem)
+template <class PEFileImage>
+void copy_pe_image_headers_indirect(const PEFileImage & image, MemoryBlock & into_mem)
 {
 	using namespace peplus::literals::offset_literals;
 
@@ -62,11 +50,11 @@ void copy_image_headers_indirect(const peplus::FileImage<XX> & image, MemoryBloc
 
 	MemoryManager & mem_manager = into_mem.memory_manager();
 	mem_manager.commit(into_mem.data(), hdrdata_buf.size());
-	into_mem.write(0, hdrdata_buf.size(), hdrdata_buf.data());
+	into_mem.write(0, hdrdata_buf.data(), hdrdata_buf.size());
 }
 
-template <unsigned int XX>
-void copy_image_headers_direct(const peplus::FileImage<XX> & image, MemoryBlock & into_mem)
+template <class PEFileImage>
+void copy_pe_image_headers_direct(const PEFileImage & image, MemoryBlock & into_mem)
 {
 	using namespace peplus::literals::offset_literals;
 
@@ -82,8 +70,8 @@ void copy_image_headers_direct(const peplus::FileImage<XX> & image, MemoryBlock 
 	image.read(0_offs, hdrs_size, into_mem.data());
 }
 
-template <unsigned int XX>
-void map_pe_image_sections_indirect(const peplus::FileImage<XX> & image, MemoryBlock & into_mem)
+template <class PEFileImage>
+void map_pe_image_sections_indirect(const PEFileImage & image, MemoryBlock & into_mem)
 {
 	std::vector<char> rdata_buf;
 	MemoryManager & mem_manager = into_mem.memory_manager();
@@ -95,12 +83,12 @@ void map_pe_image_sections_indirect(const peplus::FileImage<XX> & image, MemoryB
 		const std::size_t vdata_offs = sect_header.virtual_address;
 		void * const outmem_ptr = into_mem.data() + vdata_offs;
 		mem_manager.commit(outmem_ptr, sect_header.virtual_size);
-		into_mem.write(vdata_offs, rdata_buf.size(), rdata_buf.data());
+		into_mem.write(vdata_offs, rdata_buf.data(), rdata_buf.size());
 	}
 }
 
-template <unsigned int XX>
-void map_pe_image_sections_direct(const peplus::FileImage<XX> & image, MemoryBlock & into_mem)
+template <class PEFileImage>
+void map_pe_image_sections_direct(const PEFileImage & image, MemoryBlock & into_mem)
 {
 	MemoryManager & mem_manager = into_mem.memory_manager();
 	assert(mem_manager.allows_direct_addressing());
@@ -119,8 +107,8 @@ void map_pe_image_sections_direct(const peplus::FileImage<XX> & image, MemoryBlo
 	}
 }
 
-template <unsigned int XX, class RelocationEntry>
-void apply_pe_relocation_entry(const peplus::VirtualImage<XX> & image,
+template <class PEVirtualImage, class RelocationEntry>
+void apply_pe_relocation_entry(const PEVirtualImage & image,
                                const RelocationEntry & reloc_entry,
                                MemoryBlock & image_mem)
 {
@@ -148,8 +136,8 @@ void apply_pe_relocation_entry(const peplus::VirtualImage<XX> & image,
 	}
 }
 
-template <class Image>
-void apply_pe_image_relocations(const Image & image, MemoryBlock & image_mem)
+template <class PEImage>
+void apply_pe_image_relocations(const PEImage & image, MemoryBlock & image_mem)
 {
 	for (const auto & base_reloc : image.base_relocations()) {
 		for (const auto & reloc_entry : base_reloc.entries())
@@ -157,10 +145,10 @@ void apply_pe_image_relocations(const Image & image, MemoryBlock & image_mem)
 	}
 }
 
-template <class ImportDescriptor>
-void resolve_pe_imported_symbols(const ImportDescriptor & import_dtor,
-                                 const Module           & module,
-                                 MemoryBlock            & image_mem)
+template <class PEImportDescriptor>
+void resolve_pe_imported_symbols(const PEImportDescriptor & import_dtor,
+                                 const Module             & module,
+                                 MemoryBlock              & image_mem)
 {
 	auto thunks_it = import_dtor.thunks().begin();
 	for (const auto & import_entry : import_dtor.entries()) {
@@ -179,8 +167,8 @@ void resolve_pe_imported_symbols(const ImportDescriptor & import_dtor,
 	}
 }
 
-template <class Image>
-void resolve_pe_image_imports(const Image          & image,
+template <class PEImage>
+void resolve_pe_image_imports(const PEImage        & image,
                               const ModuleProvider & mod_provider,
                               MemoryBlock          & image_mem)
 {
@@ -201,8 +189,8 @@ constexpr int pe_section_memory_access(int characteristics)
 	return mem_access;
 }
 
-template <class Image>
-void apply_pe_memory_permissions(const Image & image, MemoryBlock & image_mem)
+template <class PEImage>
+void apply_pe_memory_permissions(const PEImage & image, MemoryBlock & image_mem)
 {
 	MemoryManager & mem_manager = image_mem.memory_manager();
 	for (const auto & sect_header : image.section_headers()) {
@@ -214,8 +202,8 @@ void apply_pe_memory_permissions(const Image & image, MemoryBlock & image_mem)
 	}
 }
 
-template <class Image>
-void remove_pe_discardable_sections(const Image & image, MemoryBlock & image_mem)
+template <class PEImage>
+void remove_pe_discardable_sections(const PEImage & image, MemoryBlock & image_mem)
 {
 	MemoryManager & mem_manager = image_mem.memory_manager();
 	for (const auto & section_header : image.section_headers()) {
@@ -233,19 +221,17 @@ MemoryBlock load_pe_image(const MemoryBuffer   & image_data,
                           MemoryManager        & mem_manager,
                           const ModuleProvider & mod_provider)
 {
-	const PEPlusMemoryBufferAdapter src_buf { image_data };
-	const peplus::FileImage<XX> src_image { src_buf };
+	const peplus::FileImage<XX, any_buffer> src_image { image_data };
 	auto image_mem = detail::allocate_pe_image(src_image, mem_manager);
 	if (mem_manager.allows_direct_addressing()) {
-		detail::copy_image_headers_direct(src_image, image_mem);
+		detail::copy_pe_image_headers_direct(src_image, image_mem);
 		detail::map_pe_image_sections_direct(src_image, image_mem);
 	} else {
-		detail::copy_image_headers_indirect(src_image, image_mem);
+		detail::copy_pe_image_headers_indirect(src_image, image_mem);
 		detail::map_pe_image_sections_indirect(src_image, image_mem);
 	}
 
-	const PEPlusMemoryBufferAdapter dst_buf { image_mem };
-	const peplus::VirtualImage<XX> dst_image { dst_buf };
+	const peplus::VirtualImage<XX, any_buffer> dst_image { image_mem };
 	detail::apply_pe_image_relocations(dst_image, image_mem);
 	detail::resolve_pe_image_imports(dst_image, mod_provider, image_mem);
 	detail::apply_pe_memory_permissions(dst_image, image_mem);
@@ -253,10 +239,10 @@ MemoryBlock load_pe_image(const MemoryBuffer   & image_data,
 	return image_mem;
 }
 
-template <unsigned int XX>
-void invoke_pe_tls_callbacks_direct(const peplus::VirtualImage<XX> & image,
-                                    MemoryBlock & image_mem, DWORD event,
-                                    void * reserved)
+template <class PEVirtualImage>
+void invoke_pe_tls_callbacks_direct(const PEVirtualImage & image,
+                                    MemoryBlock & image_mem,
+                                    DWORD event, void * reserved)
 {
 	assert(image_mem.memory_manager().allows_direct_addressing());
 
@@ -269,8 +255,8 @@ void invoke_pe_tls_callbacks_direct(const peplus::VirtualImage<XX> & image,
 	}
 }
 
-template <unsigned int XX>
-int invoke_dll_entry_point_direct(const peplus::VirtualImage<XX> & image,
+template <class PEVirtualImage>
+int invoke_dll_entry_point_direct(const PEVirtualImage & image,
                                   MemoryBlock & image_mem, DWORD event,
                                   void * reserved)
 {
@@ -283,8 +269,8 @@ int invoke_dll_entry_point_direct(const peplus::VirtualImage<XX> & image,
 	return dll_main(image_mem.data(), event, reserved);
 }
 
-template <class Image>
-const void * find_pe_exported_symbol(const Image & image,
+template <class PEImage>
+const void * find_pe_exported_symbol(const PEImage & image,
                                      const MemoryBlock & image_mem,
                                      std::string_view name)
 {
@@ -296,8 +282,8 @@ const void * find_pe_exported_symbol(const Image & image,
 	return image_mem.data() + export_info->address.value();
 }
 
-template <unsigned int XX>
-int invoke_pe_trampoline_helper(const peplus::VirtualImage<XX> & image, MemoryBlock & image_mem,
+template <class PEVirtualImage>
+int invoke_pe_trampoline_helper(const PEVirtualImage & image, MemoryBlock & image_mem,
                                 const void * trampoline_ptr, MemoryBlock & params_mem,
                                 const void * fn_ptr, DWORD event, void * reserved)
 {
@@ -306,16 +292,16 @@ int invoke_pe_trampoline_helper(const peplus::VirtualImage<XX> & image, MemoryBl
 	helper_params.lpv_reserved = reserved;
 	helper_params.h_instance = image_mem.data();
 	helper_params.fwd_proc = reinterpret_cast<PEFwdProc>(fn_ptr);
-	params_mem.write(0, sizeof(helper_params), &helper_params);
+	params_mem.write(0, &helper_params, sizeof(helper_params));
 
 	MemoryManager & mem_manager = image_mem.memory_manager();
 	return mem_manager.run_async(trampoline_ptr, params_mem.data()).get();
 }
 
-template <unsigned int XX>
-void invoke_pe_tls_callbacks_indirect(const peplus::VirtualImage<XX> & image,
-                                      MemoryBlock & image_mem, const void * trampoline_ptr,
-                                      MemoryBlock & params_mem, DWORD event, void * reserved)
+template <class PEVirtualImage>
+void invoke_pe_tls_callbacks_indirect(const PEVirtualImage & image, MemoryBlock & image_mem,
+                                      const void * trampoline_ptr, MemoryBlock & params_mem,
+                                      DWORD event, void * reserved)
 {
 	if (const auto tls_dir = image.tls_directory()) {
 		for (const auto fn_rva : tls_dir->callbacks()) {
@@ -326,10 +312,10 @@ void invoke_pe_tls_callbacks_indirect(const peplus::VirtualImage<XX> & image,
 	}
 }
 
-template <unsigned int XX>
-int invoke_dll_entry_point_indirect(const peplus::VirtualImage<XX> & image,
-                                    MemoryBlock & image_mem, const void * trampoline_ptr,
-                                    MemoryBlock & params_mem, DWORD event, void * reserved)
+template <class PEVirtualImage>
+int invoke_dll_entry_point_indirect(const PEVirtualImage & image, MemoryBlock & image_mem,
+                                    const void * trampoline_ptr, MemoryBlock & params_mem,
+                                    DWORD event, void * reserved)
 {
 	assert(image.type() == peplus::ImageType::Dynamic);
 
@@ -349,8 +335,8 @@ inline MemoryBlock allocate_pe_trampoline_params(MemoryBlock & image_mem)
 	return params_mem;
 }
 
-template <class Image>
-const void * get_pe_trampoline_address(const Image & image, const MemoryBlock & image_mem)
+template <class PEImage>
+const void * get_pe_trampoline_address(const PEImage & image, const MemoryBlock & image_mem)
 {
 	const auto trampoline_ptr = find_pe_exported_symbol(image, image_mem, "__libload_helper");
 	if (!trampoline_ptr) {
@@ -362,8 +348,8 @@ const void * get_pe_trampoline_address(const Image & image, const MemoryBlock & 
 	return trampoline_ptr;
 }
 
-template <class Image>
-int notify_dll_event_direct(const Image & image, MemoryBlock & image_mem,
+template <class PEImage>
+int notify_dll_event_direct(const PEImage & image, MemoryBlock & image_mem,
                             DWORD event, void * reserved)
 {
 	assert(image_mem.memory_manager().allows_direct_addressing());
@@ -372,8 +358,8 @@ int notify_dll_event_direct(const Image & image, MemoryBlock & image_mem,
 	return invoke_dll_entry_point_direct(image, image_mem, event, reserved);
 }
 
-template <class Image>
-int notify_dll_event_indirect(const Image & image, MemoryBlock & image_mem,
+template <class PEImage>
+int notify_dll_event_indirect(const PEImage & image, MemoryBlock & image_mem,
                               const void * trampoline_ptr, MemoryBlock & params_mem,
                               DWORD event, void * reserved)
 {
@@ -381,8 +367,8 @@ int notify_dll_event_indirect(const Image & image, MemoryBlock & image_mem,
 	return invoke_dll_entry_point_indirect(image, image_mem, trampoline_ptr, params_mem, event, reserved);
 }
 
-template <class Image>
-int notify_dll_event(const Image & image, MemoryBlock & image_mem,
+template <class PEImage>
+int notify_dll_event(const PEImage & image, MemoryBlock & image_mem,
                      DWORD event, void * reserved = nullptr)
 {
 	if (image_mem.memory_manager().allows_direct_addressing()) {

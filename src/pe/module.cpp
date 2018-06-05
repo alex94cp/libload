@@ -32,8 +32,7 @@ private:
 
 	std::unordered_map<std::string, std::shared_ptr<Module>> _module_deps;
 	MemoryBlock                                              _image_mem;
-	PEPlusMemoryBufferAdapter                                _image_buf;
-	peplus::VirtualImage<XX>                                 _image;
+	peplus::VirtualImage<XX, any_buffer>                     _image;
 };
 
 namespace {
@@ -54,8 +53,7 @@ std::optional<std::pair<std::string, std::string>>
 template <unsigned int XX>
 bool is_valid_pe_module(const MemoryBuffer & image_data)
 {
-	const PEPlusMemoryBufferAdapter buf_adapter { image_data };
-	return peplus::FileImage<XX>::is_valid(buf_adapter);
+	return peplus::FileImage<XX, any_buffer>::is_valid(image_data);
 }
 
 bool is_valid_pe_module_64(const MemoryBuffer & image_data)
@@ -103,8 +101,7 @@ PEModule<XX>::PEModule(const MemoryBuffer   & image_data,
 				return mod_sp;
 			}));
 		}() }
-	, _image_buf { _image_mem }
-	, _image { _image_buf }
+	, _image { _image_mem }
 {
 	if (!detail::notify_dll_event(_image, _image_mem, DLL_PROCESS_ATTACH))
 		throw std::runtime_error("Module initialization failed");
