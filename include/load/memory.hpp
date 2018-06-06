@@ -41,6 +41,9 @@ public:
 	virtual std::size_t copy_from(const void * mem, std::size_t size, void * into_buffer) = 0;
 	virtual std::size_t copy_into(const void * from_buffer, std::size_t size, void * into_mem) = 0;
 
+	virtual void register_exception_handlers(const void * base, void * entries, std::size_t count) = 0;
+	virtual void deregister_exception_handlers(void * entries, std::size_t count) = 0;
+
 	virtual std::future<int> run_async(const void * mem, void * params) = 0;
 };
 

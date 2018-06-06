@@ -38,3 +38,14 @@ BOOST_FIXTURE_TEST_CASE(get_data, ModuleTest)
 	BOOST_CHECK_NE(sample_data, nullptr);
 	BOOST_CHECK_EQUAL(*sample_data, 123);
 }
+
+#if defined(_MSC_VER) || defined(__DMC__)
+
+BOOST_FIXTURE_TEST_CASE(load_module_seh, ModuleTest)
+{
+	_module = load::load_module(_file);
+	const auto sample_seh = _module->get_proc<int()>("sample_seh");
+	BOOST_CHECK_EQUAL(sample_seh(), 123);
+}
+
+#endif

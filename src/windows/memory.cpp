@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <stdexcept>
 #include <system_error>
 
@@ -22,6 +23,9 @@ public:
 
 	virtual void commit(void * mem, std::size_t size) override;
 	virtual void decommit(void * mem, std::size_t size) override;
+
+	virtual void register_exception_handlers(const void * base, void * entries, std::size_t count) override;
+	virtual void deregister_exception_handlers(void * entries, std::size_t count) override;
 
 	virtual std::future<int> run_async(const void * mem, void * param) override;
 };
@@ -100,6 +104,20 @@ std::size_t LocalMemoryManager::copy_into(const void * data, std::size_t size, v
 {
 	std::copy_n(static_cast<const char *>(data), size, static_cast<char *>(into_mem));
 	return size;
+}
+
+void LocalMemoryManager::register_exception_handlers(const void * base, void * entries, std::size_t count)
+{
+	const DWORD entries_count = static_cast<DWORD>(count);
+	const RUNTIME_FUNCTION * entries_ptr = static_cast<RUNTIME_FUNCTION *>(entries);
+	if (!RtlAddFunctionTable(entries_ptr, entries_count, reinterpret_cast<std::uintptr_t>(base)))
+		throw std::system_error(GetLastError(), std::system_category());
+}
+
+void LocalMemoryManager::deregister_exception_handlers(void * entries, std::size_t count)
+{
+	if (!RtlDeleteFunctionTable(static_cast<RUNTIME_FUNCTION *>(entries)))
+		throw std::system_error(GetLastError(), std::system_category());
 }
 
 std::future<int> LocalMemoryManager::run_async(const void * mem, void * params)

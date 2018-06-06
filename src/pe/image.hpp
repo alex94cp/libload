@@ -276,8 +276,33 @@ int notify_dll_event_direct(const PEImage & image, void * image_base,
 }
 
 template <class PEImage>
-bool initialize_dll_direct(const PEImage & image, void * image_base)
+constexpr std::size_t pe_image_exception_handler_count(const PEImage & image)
 {
+	const auto except_dir = image.data_directory(peplus::DIRECTORY_ENTRY_EXCEPTION);
+	return except_dir ? except_dir->size / sizeof(peplus::RuntimeFunction) : 0;
+}
+
+template <class PEImage>
+void register_pe_image_exception_table_direct(const PEImage & image,
+                                              MemoryManager & mem_manager,
+                                              void          * image_base)
+{
+	assert(mem_manager.allows_direct_addressing());
+
+	if (const auto rf_entries = image.exception_entries()) {
+		const auto entries_offset = rf_entries.begin()->offset();
+		const std::size_t entries_count = pe_image_exception_handler_count(image);
+		void * const entries_ptr = static_cast<char *>(image_base) + entries_offset.value();
+		mem_manager.register_exception_handlers(image_base, entries_ptr, entries_count);
+	}
+}
+
+template <class PEImage>
+bool initialize_dll_direct(const PEImage & image, MemoryManager & mem_manager, void * image_base)
+{
+	assert(mem_manager.allows_direct_addressing());
+
+	register_pe_image_exception_table_direct(image, mem_manager, image_base);
 	if (!notify_dll_event_direct(image, image_base, DLL_PROCESS_ATTACH))
 		return false;
 
@@ -286,9 +311,9 @@ bool initialize_dll_direct(const PEImage & image, void * image_base)
 }
 
 template <class PEImage>
-const void * find_pe_exported_symbol(const PEImage & image,
+const void * find_pe_exported_symbol(const PEImage     & image,
                                      const MemoryBlock & image_mem,
-                                     std::string_view name)
+                                     std::string_view    name)
 {
 	const auto export_dir = image.export_directory();
 	if (!export_dir) return nullptr;
@@ -316,7 +341,7 @@ bool initialize_dll(const PEImage & image, MemoryBlock & image_mem)
 {
 	MemoryManager & mem_manager = image_mem.memory_manager();
 	if (mem_manager.allows_direct_addressing()) {
-		return initialize_dll_direct(image, image_mem.data());
+		return initialize_dll_direct(image, mem_manager, image_mem.data());
 	} else {
 		const void * const init_helper = get_dll_init_helper(image, image_mem);
 		auto init_task = mem_manager.run_async(init_helper, image_mem.data());
@@ -338,10 +363,28 @@ const void * get_dll_cleanup_helper(const PEImage & image, const MemoryBlock & i
 }
 
 template <class PEImage>
-void deinitialize_dll_direct(const PEImage & image, void * image_base)
+void deregister_pe_image_exception_table_direct(const PEImage & image,
+                                                MemoryManager & mem_manager,
+                                                void          * image_base)
 {
+	assert(mem_manager.allows_direct_addressing());
+
+	if (const auto rf_entries = image.exception_entries()) {
+		const auto entries_offset = rf_entries.begin()->offset();
+		const std::size_t entries_count = pe_image_exception_handler_count(image);
+		void * const entries_ptr = static_cast<char *>(image_base) + entries_offset.value();
+		mem_manager.deregister_exception_handlers(entries_ptr, entries_count);
+	}
+}
+
+template <class PEImage>
+void deinitialize_dll_direct(const PEImage & image, MemoryManager & mem_manager, void * image_base)
+{
+	assert(mem_manager.allows_direct_addressing());
+
 	notify_dll_event_direct(image, image_base, DLL_THREAD_DETACH);
 	notify_dll_event_direct(image, image_base, DLL_PROCESS_DETACH);
+	deregister_pe_image_exception_table_direct(image, mem_manager, image_base);
 }
 
 template <class PEImage>
@@ -349,7 +392,7 @@ void deinitialize_dll(const PEImage & image, MemoryBlock & image_mem)
 {
 	MemoryManager & mem_manager = image_mem.memory_manager();
 	if (mem_manager.allows_direct_addressing()) {
-		deinitialize_dll_direct(image, image_mem.data());
+		deinitialize_dll_direct(image, mem_manager, image_mem.data());
 	} else {
 		const void * const deinit_helper = get_dll_cleanup_helper(image, image_mem);
 		mem_manager.run_async(deinit_helper, image_mem.data()).wait();
