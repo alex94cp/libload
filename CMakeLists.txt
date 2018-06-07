@@ -6,8 +6,8 @@ include(CPack)
 include(CTest)
 include(GNUInstallDirs)
 
-option(LIBLOAD_ENABLE_PE64_SUPPORT "Enable module support for the PE+ format" ON)
-option(LIBLOAD_ENABLE_PE32_SUPPORT "Enable module support for the PE format"  ON)
+option(LIBLOAD_ENABLE_PE32_SUPPORT "Enable module support for the PE format"  OFF)
+option(LIBLOAD_ENABLE_PE64_SUPPORT "Enable module support for the PE+ format" OFF)
 
 configure_file(src/config.hpp.cmake src/config.hpp)
 
@@ -72,7 +72,7 @@ write_basic_package_version_file(LibLoadConfigVersion.cmake VERSION ${PROJECT_VE
 
 install(FILES ${CMAKE_BINARY_DIR}/LibLoadTargets.cmake
               ${CMAKE_BINARY_DIR}/LibLoadConfigVersion.cmake
-              DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+              DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libload)
 
 configure_file(include/load/version.hpp.cmake include/load/version.hpp)
 install(DIRECTORY include/load DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN *.hpp)
@@ -86,10 +86,11 @@ write_basic_package_version_file(LibLoadConfigVersion.cmake VERSION ${PROJECT_VE
 
 install(FILES ${CMAKE_BINARY_DIR}/LibLoadTargets.cmake
               ${CMAKE_BINARY_DIR}/LibLoadConfigVersion.cmake
-              DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+              DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libload)
 
 add_library(sample_module MODULE test/sample_module.cpp)
-set_target_properties(sample_module PROPERTIES SUFFIX .llm)
+set_target_properties(sample_module PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON
+                                               SUFFIX .llm)
 
 add_executable(test_loadmodule test/test_loadmodule.cpp)
 target_include_directories(test_loadmodule PRIVATE ${Boost_INCLUDE_DIRS})

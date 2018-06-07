@@ -152,7 +152,7 @@ void resolve_pe_imported_symbols(const PEImportDescriptor & import_dtor,
 	auto thunks_it = import_dtor.thunks().begin();
 	for (const auto & import_entry : import_dtor.entries()) {
 		std::visit([&] (const auto & import_info) {
-			if constexpr (peplus::is_unnamed_import_v<decltype(import_info)>) {
+			if constexpr (import_dtor.template is_unnamed_import<decltype(import_info)>()) {
 				throw std::runtime_error("Imports by ordinal are not supported");
 			} else {
 				const void * const import_addr = module.get_data<void>(import_info.name);
