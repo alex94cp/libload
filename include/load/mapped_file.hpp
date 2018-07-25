@@ -12,7 +12,7 @@ namespace load {
 class LOAD_EXPORT MappedFile final : public MemoryBuffer
 {
 public:
-	MappedFile(const std::filesystem::path & path);
+	explicit MappedFile(const std::filesystem::path & path);
 
 	virtual std::size_t read(std::size_t offset, std::size_t size,
 	                         void * into_buffer) const override;
