@@ -1,7 +1,8 @@
-#include <load/module.hpp>
+#include "../module.hpp"
 
 #include <windows.h>
 
+#include <memory>
 #include <string>
 #include <system_error>
 
@@ -22,13 +23,13 @@ private:
 	HMODULE _handle;
 };
 
-class SystemModuleProvider final : public ModuleProvider
-{
-public:
-	virtual std::shared_ptr<Module> get_module(std::string_view name) const override;
-};
-
-const ModuleProvider & system_module_provider = SystemModuleProvider {};
+const ModuleProvider & system_module_provider =
+	detail::make_caching_module_provider([] (const std::string & name) {
+		std::shared_ptr<SystemModule> module_sp;
+		if (const HMODULE module_handle = LoadLibraryA(name.c_str()))
+			module_sp = std::make_shared<SystemModule>(module_handle);
+		return module_sp;
+	});
 
 SystemModule::SystemModule(HMODULE handle)
 	: _handle { handle } {}
@@ -36,34 +37,25 @@ SystemModule::SystemModule(HMODULE handle)
 SystemModule::SystemModule(SystemModule && other)
 	: _handle { other._handle }
 {
-	other._handle = 0;
+	other._handle = nullptr;
 }
 
 SystemModule::~SystemModule()
 {
-	if (_handle != 0)
+	if (_handle != nullptr)
 		FreeLibrary(_handle);
 }
 
 ProcPtr SystemModule::get_proc_address(std::string_view name) const
 {
 	const DataPtr data_addr = get_data_address(name);
-	return static_cast<ProcPtr>(data_addr);
+	return reinterpret_cast<ProcPtr>(data_addr);
 }
 
 DataPtr SystemModule::get_data_address(std::string_view name) const
 {
 	const std::string name_s { name };
 	return GetProcAddress(_handle, name_s.c_str());
-}
-
-std::shared_ptr<Module> SystemModuleProvider::get_module(std::string_view name) const
-{
-	const std::string name_s { name };
-	const HMODULE module_handle = LoadLibraryA(name_s.c_str());
-	if (!module_handle) return nullptr;
-
-	return std::make_shared<SystemModule>(module_handle);
 }
 
 }

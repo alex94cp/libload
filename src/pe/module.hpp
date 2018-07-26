@@ -1,20 +1,29 @@
 #ifndef LOAD_SRC_PE_MODULE_HPP_
 #define LOAD_SRC_PE_MODULE_HPP_
 
-#include <load/memory_module.hpp>
+#include "../module.hpp"
 
 namespace load::detail {
 
-bool is_valid_pe_module_64(const MemoryBuffer & image_data);
-bool is_valid_pe_module_32(const MemoryBuffer & image_data);
+#ifdef LIBLOAD_ENABLE_PE64_SUPPORT
 
-std::shared_ptr<Module> load_pe_module_64(const MemoryBuffer   & image_data,
-                                          const ModuleProvider & module_provider,
-                                          MemoryManager        & memory_manager);
+	bool is_valid_pe_module_64(const MemoryBuffer & image_data);
 
-std::shared_ptr<Module> load_pe_module_32(const MemoryBuffer   & image_data,
-                                          const ModuleProvider & module_provider,
-                                          MemoryManager        & memory_manager);
+	std::shared_ptr<Module> load_pe_module_64(const MemoryBuffer   & image_data,
+	                                          const ModuleProvider & module_provider,
+	                                          Process              & into_process);
+
+#endif
+
+#ifdef LIBLOAD_ENABLE_PE32_SUPPORT
+
+	bool is_valid_pe_module_32(const MemoryBuffer & image_data);
+
+	std::shared_ptr<Module> load_pe_module_32(const MemoryBuffer   & image_data,
+	                                          const ModuleProvider & module_provider,
+	                                          Process              & into_process);
+
+#endif
 
 }
 

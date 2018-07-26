@@ -1,5 +1,4 @@
-#include <config.hpp>
-#include <load/memory_module.hpp>
+#include "module.hpp"
 
 #if defined(LIBLOAD_ENABLE_PE64_SUPPORT) || defined(LIBLOAD_ENABLE_PE32_SUPPORT)
 #	include "pe/module.hpp"
@@ -9,18 +8,18 @@ namespace load {
 
 std::shared_ptr<Module> load_module(const MemoryBuffer   & module_data,
                                     const ModuleProvider & module_provider,
-                                    MemoryManager        & memory_manager)
+                                    Process              & into_process)
 {
 	using namespace detail;
 
 #ifdef LIBLOAD_ENABLE_PE64_SUPPORT
 	if (is_valid_pe_module_64(module_data))
-		return load_pe_module_64(module_data, module_provider, memory_manager);
+		return load_pe_module_64(module_data, module_provider, into_process);
 #endif
 
 #ifdef LIBLOAD_ENABLE_PE32_SUPPORT
 	if (is_valid_pe_module_32(module_data))
-		return load_pe_module_32(module_data, module_provider, memory_manager);
+		return load_pe_module_32(module_data, module_provider, into_process);
 #endif
 
 	return nullptr;

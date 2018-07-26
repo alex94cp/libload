@@ -9,14 +9,6 @@
 
 namespace load {
 
-enum MemoryAccess
-{
-	MemAccessNone    = 0,
-	MemAccessRead    = 1 << 0,
-	MemAccessWrite   = 1 << 1,
-	MemAccessExecute = 1 << 2,
-};
-
 class LOAD_EXPORT MemoryBuffer
 {
 public:
@@ -27,6 +19,13 @@ public:
 class LOAD_EXPORT MemoryManager
 {
 public:
+	enum MemoryAccess
+	{
+		ReadAccess    = 1 << 0,
+		WriteAccess   = 1 << 1,
+		ExecuteAccess = 1 << 2,
+	};
+
 	virtual ~MemoryManager() = default;
 
 	virtual bool allows_direct_addressing() const = 0;
@@ -40,14 +39,7 @@ public:
 
 	virtual std::size_t copy_from(const void * mem, std::size_t size, void * into_buffer) = 0;
 	virtual std::size_t copy_into(const void * from_buffer, std::size_t size, void * into_mem) = 0;
-
-	virtual void register_exception_handlers(const void * base, void * entries, std::size_t count) = 0;
-	virtual void deregister_exception_handlers(void * entries, std::size_t count) = 0;
-
-	virtual std::future<int> run_async(const void * mem, void * params) = 0;
 };
-
-LOAD_EXPORT extern MemoryManager & local_memory_manager;
 
 }
 

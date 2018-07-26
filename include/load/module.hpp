@@ -1,12 +1,14 @@
 #ifndef LOAD_MODULE_HPP_
 #define LOAD_MODULE_HPP_
 
-#include <load/memory.hpp>
+#include <load/process.hpp>
 
 #include <cstddef>
 #include <string_view>
 
 namespace load {
+
+class MemoryBuffer;
 
 using DataPtr = const void *;
 using ProcPtr = void (*)(...);
@@ -39,37 +41,10 @@ public:
 
 LOAD_EXPORT extern const ModuleProvider & system_module_provider;
 
-namespace detail {
-
-template <class Fn>
-class ModuleProviderFn final : public ModuleProvider
-{
-public:
-	ModuleProviderFn(Fn fn);
-
-	virtual std::shared_ptr<Module> get_module(std::string_view name) const override;
-
-private:
-	Fn _fn;
-};
-
-template <class Fn>
-ModuleProviderFn<Fn>::ModuleProviderFn(Fn fn)
-	: _fn { std::move(fn) } {}
-
-template <class Fn>
-std::shared_ptr<Module> ModuleProviderFn<Fn>::get_module(std::string_view name) const
-{
-	return _fn(name);
-}
-
-}
-
-template <class Fn>
-auto make_module_provider(Fn && fn)
-{
-	return detail::ModuleProviderFn(std::forward<Fn>(fn));
-}
+LOAD_EXPORT std::shared_ptr<Module>
+	load_module(const MemoryBuffer   & module_data,
+	            const ModuleProvider & module_provider = system_module_provider,
+	            Process              & into_process    = current_process());
 
 template <typename T>
 T * Module::get_data(std::string_view name)
