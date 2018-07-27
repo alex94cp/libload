@@ -1,5 +1,5 @@
-#ifndef LOAD_MAPPEDFILE_HPP_
-#define LOAD_MAPPEDFILE_HPP_
+#ifndef LOAD_MAPFILE_HPP_
+#define LOAD_MAPFILE_HPP_
 
 #include <load/memory.hpp>
 

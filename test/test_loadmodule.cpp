@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE LoadModule
 #include <boost/test/unit_test.hpp>
 
-#include <load/mapped_file.hpp>
+#include <load/mapfile.hpp>
 #include <load/module.hpp>
 
 #include <memory>
