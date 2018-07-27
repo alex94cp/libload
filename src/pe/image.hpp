@@ -91,8 +91,8 @@ void map_pe_image_sections_direct(const PEFileImage & image, MemoryBlock & into_
 
 	MemoryManager & memory_manager = into_memory.memory_manager();
 	for (const auto & sect_header : image.section_headers()) {
-		const peplus::FileOffset rdata_offs { sect_header.pointer_to_raw_data };
 		const std::size_t vdata_offs = sect_header.virtual_address;
+		const peplus::FileOffset rdata_offs { sect_header.pointer_to_raw_data };
 
 		char * const outmem_ptr = into_memory.data() + vdata_offs;
 		const std::size_t rem_size = into_memory.size() - vdata_offs;
@@ -104,28 +104,29 @@ void map_pe_image_sections_direct(const PEFileImage & image, MemoryBlock & into_
 	}
 }
 
-template <class PEVirtualImage, class RelocationEntry, class MemoryBlock>
-void apply_pe_relocation_entry(const PEVirtualImage & image,
-                               const RelocationEntry & reloc_entry,
-                               MemoryBlock & image_mem)
+template <class PEVirtualImage, class MemoryBlock>
+void apply_pe_relocation_entry(const PEVirtualImage          & image,
+                               const peplus::BaseRelocation  & base_reloc,
+                               const peplus::RelocationEntry & reloc_entry,
+                               std::uintptr_t                  base_address,
+                               MemoryBlock                   & relblock_mem)
 {
+	const auto reloc_offs = reloc_entry.address - base_reloc.virtual_address;
 	const std::uintptr_t preferred_base = image.optional_header().image_base;
-	const auto base_address = reinterpret_cast<std::uintptr_t>(image_mem.data());
 	const std::ptrdiff_t base_diff = base_address - preferred_base;
-	const std::size_t rel_offs = reloc_entry.address.value();
 
 	switch (reloc_entry.type) {
 		case peplus::REL_BASED_ABSOLUTE:
 			break;
 
 		case peplus::REL_BASED_HIGHLOW:
-			modify_le_value_at<std::uint32_t>(image_mem, rel_offs,
-				[=] (auto x) { return x + static_cast<std::int32_t>(base_diff); });
+			modify_le_value_at<std::uint32_t>(relblock_mem, reloc_offs.value(),
+				[=] (auto x) { return x + std::int32_t(base_diff); });
 			break;
 
 		case peplus::REL_BASED_DIR64:
-			modify_le_value_at<std::uint64_t>(image_mem, rel_offs,
-				[=] (auto x) { return x + static_cast<std::int64_t>(base_diff); });
+			modify_le_value_at<std::uint64_t>(relblock_mem, reloc_offs.value(),
+				[=] (auto x) { return x + std::int64_t(base_diff); });
 			break;
 
 		default:
@@ -134,11 +135,30 @@ void apply_pe_relocation_entry(const PEVirtualImage & image,
 }
 
 template <class PEImage, class MemoryBlock>
-void apply_pe_image_relocations(const PEImage & image, MemoryBlock & image_mem)
+void apply_pe_image_relocations_direct(const PEImage & image, MemoryBlock & image_mem)
 {
+	assert(image_mem.memory_manager().allows_direct_addressing());
+
+	const auto base_address = reinterpret_cast<std::uintptr_t>(image_mem.data());
 	for (const auto & base_reloc : image.base_relocations()) {
+		const std::size_t relblock_size = base_reloc.size_of_block;
+		auto relblock_slice = get_memory_block_slice(image_mem, base_reloc.virtual_address, relblock_size);
 		for (const auto & reloc_entry : base_reloc.entries())
-			apply_pe_relocation_entry(image, reloc_entry, image_mem);
+			apply_pe_relocation_entry(image, base_reloc, reloc_entry, base_address, relblock_slice);
+	}
+}
+
+template <class PEImage, class MemoryBlock>
+void apply_pe_image_relocations_indirect(const PEImage & image, MemoryBlock & image_mem)
+{
+	const auto base_address = reinterpret_cast<std::uintptr_t>(image_mem.data());
+	for (const auto & base_reloc : image.base_relocations()) {
+		const std::size_t relblock_size = base_reloc.size_of_block;
+		auto relblock_slice = get_memory_block_slice(image_mem, base_reloc.virtual_address, relblock_size);
+		OwnedMemoryBlock relblock_copy = copy_into_local_memory(relblock_slice);
+		for (const auto & reloc_entry : base_reloc.entries())
+			apply_pe_relocation_entry(image, base_reloc, reloc_entry, base_address, relblock_copy);
+		relblock_slice.write(0, relblock_copy.data(), relblock_size);
 	}
 }
 
@@ -171,7 +191,8 @@ void resolve_pe_image_imports(const PEImage        & image,
 	for (const auto & import_dtor : image.import_descriptors()) {
 		const std::string mod_name = import_dtor.name_str();
 		const auto mod_sp = mod_provider.get_module(mod_name);
-		if (!mod_sp) throw std::runtime_error("Image has unresolved imports");
+		if (!mod_sp)
+			throw std::runtime_error("Image has unresolved imports");
 		resolve_pe_imported_symbols(import_dtor, *mod_sp, image_mem);
 	}
 }
@@ -228,7 +249,11 @@ OwnedMemoryBlock load_pe_image(const MemoryBuffer   & image_data,
 	}
 
 	const peplus::VirtualImage<XX, any_buffer> dst_image { image_mem };
-	detail::apply_pe_image_relocations(dst_image, image_mem);
+	if (memory_manager.allows_direct_addressing()) {
+		detail::apply_pe_image_relocations_direct(dst_image, image_mem);
+	} else {
+		detail::apply_pe_image_relocations_indirect(dst_image, image_mem);
+	}
 	detail::resolve_pe_image_imports(dst_image, mod_provider, image_mem);
 	detail::apply_pe_memory_permissions(dst_image, image_mem);
 	detail::remove_pe_discardable_sections(dst_image, image_mem);
