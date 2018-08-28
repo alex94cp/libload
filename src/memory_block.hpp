@@ -1,8 +1,8 @@
-#ifndef LOAD_SRC_MEMORY_HPP_
-#define LOAD_SRC_MEMORY_HPP_
+#ifndef LOAD_SRC_MEMORYBLOCK_HPP_
+#define LOAD_SRC_MEMORYBLOCK_HPP_
 
-#include <load/memory.hpp>
-#include <load/process.hpp>
+#include <load/memory/memory_buffer.hpp>
+#include <load/memory/memory_manager.hpp>
 
 #include <boost/endian/conversion.hpp>
 
@@ -47,18 +47,25 @@ public:
 	                          std::size_t  size) = 0;
 };
 
-template <class MemoryOwnershipPolicy>
+template <class MemoryOwnership>
 class MemoryBlock final : public MutableMemoryBuffer
 {
 public:
+	friend class MemoryBlock;
+
 	MemoryBlock(MemoryManager & mem_manager,
 	            void * mem, std::size_t size);
-	MemoryBlock(MemoryBlock && other);
+	
+	template <class MO2>
+	MemoryBlock(MemoryBlock<MO2> && other);
+	
 	virtual ~MemoryBlock();
 
 	char       * data();
 	const char * data() const;
 	std::size_t  size() const;
+
+	explicit operator bool() const;
 
 	MemoryManager       & memory_manager();
 	const MemoryManager & memory_manager() const;
@@ -128,81 +135,87 @@ void modify_le_value_at(MutableMemoryBuffer & mem_buffer, std::size_t offset, Fn
 	write_le_value_into<T>(value, mem_buffer, offset);
 }
 
-template <class MOP>
-MemoryBlock<MOP>::MemoryBlock(MemoryManager & mem_manager,
-                              void * mem, std::size_t size)
+template <class MO>
+MemoryBlock<MO>::MemoryBlock(MemoryManager & mem_manager,
+                             void * mem, std::size_t size)
 	: _mem_manager { &mem_manager }
 	, _mem_pointer { static_cast<char *>(mem) }
 	, _mem_size { size }
 {}
 
-template <class MOP>
-MemoryBlock<MOP>::MemoryBlock(MemoryBlock && other)
+template <class MO> template <class MO2>
+MemoryBlock<MO>::MemoryBlock(MemoryBlock<MO2> && other)
 	: _mem_manager { other._mem_manager }
 	, _mem_pointer { other._mem_pointer }
 	, _mem_size { other._mem_size }
 {
-	other._mem_pointer = nullptr;
+	other.release();
 }
 
-template <class MOP>
-MemoryBlock<MOP>::~MemoryBlock()
+template <class MO>
+MemoryBlock<MO>::~MemoryBlock()
 {
 	if (_mem_pointer != nullptr)
-		MOP::dispose(*_mem_manager, _mem_pointer, _mem_size);
+		MO::dispose(*_mem_manager, _mem_pointer, _mem_size);
 }
 
-template <class MOP>
-char * MemoryBlock<MOP>::data()
+template <class MO>
+char * MemoryBlock<MO>::data()
 {
 	return _mem_pointer;
 }
 
-template <class MOP>
-const char * MemoryBlock<MOP>::data() const
+template <class MO>
+const char * MemoryBlock<MO>::data() const
 {
 	return _mem_pointer;
 }
 
-template <class OP>
-std::size_t MemoryBlock<OP>::size() const
+template <class MO>
+std::size_t MemoryBlock<MO>::size() const
 {
 	return _mem_size;
 }
 
-template <class MOP>
-MemoryManager & MemoryBlock<MOP>::memory_manager()
+template <class MO>
+MemoryBlock<MO>::operator bool() const
+{
+	return _mem_pointer != nullptr;
+}
+
+template <class MO>
+MemoryManager & MemoryBlock<MO>::memory_manager()
 {
 	return *_mem_manager;
 }
 
-template <class MOP>
-const MemoryManager & MemoryBlock<MOP>::memory_manager() const
+template <class MO>
+const MemoryManager & MemoryBlock<MO>::memory_manager() const
 {
 	return *_mem_manager;
 }
 
-template <class MOP>
-void MemoryBlock<MOP>::release()
+template <class MO>
+void MemoryBlock<MO>::release()
 {
 	_mem_manager = nullptr;
 	_mem_pointer = nullptr;
 	_mem_size = 0;
 }
 
-template <class MOP>
-std::size_t MemoryBlock<MOP>::read(std::size_t offset,
-                                   std::size_t size,
-                                   void      * into_buffer) const
+template <class MO>
+std::size_t MemoryBlock<MO>::read(std::size_t offset,
+                                  std::size_t size,
+                                  void      * into_buffer) const
 {
 	const std::size_t bytes_to_read = std::min(_mem_size - offset, size);
 	return _mem_manager->copy_from(_mem_pointer + offset, bytes_to_read, into_buffer);
 }
 
-template <class MOP>
-std::size_t MemoryBlock<MOP>::write(std::size_t  offset,
-                                    const void * from_buffer,
-                                    std::size_t  size)
+template <class MO>
+std::size_t MemoryBlock<MO>::write(std::size_t  offset,
+                                   const void * from_buffer,
+                                   std::size_t  size)
 {
 	const std::size_t bytes_to_write = std::min(_mem_size - offset, size);
 	return _mem_manager->copy_into(from_buffer, bytes_to_write, _mem_pointer + offset);

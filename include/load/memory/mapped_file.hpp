@@ -1,11 +1,12 @@
-#ifndef LOAD_MAPFILE_HPP_
-#define LOAD_MAPFILE_HPP_
+#ifndef LOAD_MEMORY_MAPPEDFILE_HPP_
+#define LOAD_MEMORY_MAPPEDFILE_HPP_
 
-#include <load/memory.hpp>
+#include <load/memory/memory_buffer.hpp>
+
+#include <cstddef>
+#include <filesystem>
 
 #include <boost/iostreams/device/mapped_file.hpp>
-
-#include <filesystem>
 
 namespace load {
 

@@ -6,19 +6,24 @@ include(CPack)
 include(CTest)
 include(GNUInstallDirs)
 
-option(LIBLOAD_ENABLE_PE32_SUPPORT "Enable module support for the PE format"  OFF)
-option(LIBLOAD_ENABLE_PE64_SUPPORT "Enable module support for the PE+ format" OFF)
+option(LIBLOAD_ENABLE_ARCH_X86_64 "Enable x86_64 support" ON)
+
+option(LIBLOAD_ENABLE_FORMAT_PE32 "Enable module support for the PE format"  OFF)
+option(LIBLOAD_ENABLE_FORMAT_PE64 "Enable module support for the PE+ format" OFF)
 
 configure_file(src/config.hpp.cmake src/config.hpp)
 
 find_package(Boost REQUIRED COMPONENTS iostreams unit_test_framework)
 
-add_library(load src/mapfile.cpp src/module.cpp)
+add_library(load src/code_chunk.cpp
+                 src/mapped_file.cpp
+                 src/load_module.cpp
+                 src/module_provider.cpp)
 
 if(WIN32)
-	target_sources(load PRIVATE src/windows/memory.cpp
-	                            src/windows/module.cpp
-	                            src/windows/process.cpp)
+	target_sources(load PRIVATE src/platform/windows/current_process.cpp
+	                            src/platform/windows/local_process.cpp
+	                            src/platform/windows/system_module.cpp)
 endif()
 
 add_library(LibLoad::load ALIAS load)
@@ -28,15 +33,14 @@ target_link_libraries(load PUBLIC ${Boost_IOSTREAMS_LIBRARY})
 add_library(loadhlp INTERFACE)
 get_filename_component(loadhlp_root_dir ${CMAKE_CURRENT_SOURCE_DIR} ABSOLUTE)
 
-if(${LIBLOAD_ENABLE_PE32_SUPPORT} OR ${LIBLOAD_ENABLE_PE64_SUPPORT})
+if (${LIBLOAD_ENABLE_ARCH_X86_64})
+	target_sources(load PRIVATE src/arch/x64/code_generator.cpp)
+endif()
+
+if(${LIBLOAD_ENABLE_FORMAT_PE32} OR ${LIBLOAD_ENABLE_FORMAT_PE64})
 	find_package(PEPlus REQUIRED)
-
-	target_sources(load PRIVATE src/pe/module.cpp)
+	target_sources(load PRIVATE src/pe/load_module.cpp)
 	target_link_libraries(load PRIVATE PEPlus::peplus)
-
-	add_library(loadhlp_pe INTERFACE)
-	target_link_libraries(loadhlp_pe INTERFACE loadhlp PEPlus::peplus)
-	target_sources(loadhlp_pe INTERFACE ${loadhlp_root_dir}/src/pe/helpers.cpp)
 endif()
 
 install(TARGETS load EXPORT load_targets
@@ -99,3 +103,9 @@ target_link_libraries(test_loadmodule LibLoad::load ${Boost_UNIT_TEST_FRAMEWORK_
 
 add_test(NAME LoadModule COMMAND "$<TARGET_FILE:test_loadmodule>"
                          WORKING_DIRECTORY "$<TARGET_FILE_DIR:sample_module>")
+
+add_executable(test_codegenerator test/test_codegenerator.cpp)
+target_include_directories(test_codegenerator PRIVATE ${Boost_INCLUDE_DIRS})
+target_link_libraries(test_codegenerator LibLoad::load ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
+
+add_test(NAME CodeGenerator COMMAND "$<TARGET_FILE:test_codegenerator>")

@@ -1,35 +1,21 @@
-#include "../module.hpp"
-
-#include <windows.h>
+#include "system_module.hpp"
+#include "../../module_provider.hpp"
 
 #include <memory>
-#include <string>
-#include <system_error>
 
 namespace load {
 
-class SystemModule final : public Module
-{
-public:
-	explicit SystemModule(HMODULE handle);
-	SystemModule(SystemModule && other);
-	virtual ~SystemModule();
+using namespace detail;
 
-protected:
-	virtual ProcPtr get_proc_address(std::string_view name) const override;
-	virtual DataPtr get_data_address(std::string_view name) const override;
-
-private:
-	HMODULE _handle;
-};
-
-const ModuleProvider & system_module_provider =
-	detail::make_caching_module_provider([] (const std::string & name) {
+ModuleProvider & system_module_provider =
+	make_module_provider([] (const std::string & name) {
 		std::shared_ptr<SystemModule> module_sp;
 		if (const HMODULE module_handle = LoadLibraryA(name.c_str()))
 			module_sp = std::make_shared<SystemModule>(module_handle);
 		return module_sp;
 	});
+
+namespace detail {
 
 SystemModule::SystemModule(HMODULE handle)
 	: _handle { handle } {}
@@ -58,4 +44,4 @@ DataPtr SystemModule::get_data_address(std::string_view name) const
 	return GetProcAddress(_handle, name_s.c_str());
 }
 
-}
+} }

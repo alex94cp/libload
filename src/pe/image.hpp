@@ -1,8 +1,13 @@
 #ifndef LOAD_SRC_PE_IMAGE_HPP_
 #define LOAD_SRC_PE_IMAGE_HPP_
 
-#include "../memory.hpp"
-#include <load/module.hpp>
+#include "../memory_block.hpp"
+
+#include <load/codegen/code_chunk.hpp>
+#include <load/codegen/code_generator.hpp>
+#include <load/module/module.hpp>
+#include <load/module/module_provider.hpp>
+#include <load/process/process.hpp>
 
 #include <peplus/file_image.hpp>
 #include <peplus/virtual_image.hpp>
@@ -184,9 +189,9 @@ void resolve_pe_imported_symbols(const PEImportDescriptor & import_dtor,
 }
 
 template <class PEImage, class MemoryBlock>
-void resolve_pe_image_imports(const PEImage        & image,
-                              const ModuleProvider & mod_provider,
-                              MemoryBlock          & image_mem)
+void resolve_pe_image_imports(const PEImage  & image,
+                              ModuleProvider & mod_provider,
+                              MemoryBlock    & image_mem)
 {
 	for (const auto & import_dtor : image.import_descriptors()) {
 		const std::string mod_name = import_dtor.name_str();
@@ -234,9 +239,9 @@ void remove_pe_discardable_sections(const PEImage & image, MemoryBlock & image_m
 }
 
 template <unsigned int XX>
-OwnedMemoryBlock load_pe_image(const MemoryBuffer   & image_data,
-                               MemoryManager        & memory_manager,
-                               const ModuleProvider & mod_provider)
+OwnedMemoryBlock load_pe_image(const MemoryBuffer & image_data,
+                               MemoryManager      & memory_manager,
+                               ModuleProvider     & mod_provider)
 {
 	const peplus::FileImage<XX, any_buffer> src_image { image_data };
 	auto image_mem = detail::allocate_pe_image(src_image, memory_manager);
@@ -297,16 +302,22 @@ void invoke_pe_tls_callbacks_direct(const PEVirtualImage & image,
 }
 
 template <class PEVirtualImage>
+void * pe_image_entry_point(const PEVirtualImage & image, void * image_base)
+{
+	const auto opt_header = image.optional_header();
+	char * const image_ptr = static_cast<char *>(image_base);
+	return image_ptr + opt_header.address_of_entry_point;
+}
+
+template <class PEVirtualImage>
 int invoke_dll_entry_point_direct(const PEVirtualImage & image,
                                   void * image_base, DWORD event,
                                   void * reserved)
 {
 	assert(image.type() == peplus::ImageType::Dynamic);
 
-	const auto opt_header = image.optional_header();
-	char * const image_ptr = static_cast<char *>(image_base);
-	const std::size_t ep_rva = opt_header.address_of_entry_point;
-	const auto dll_main = reinterpret_cast<DllMain>(image_ptr + ep_rva);
+	const void * entry_point = pe_image_entry_point(image, image_base);
+	const auto dll_main = reinterpret_cast<DllMain>(entry_point);
 	return dll_main(image_base, event, reserved);
 }
 
@@ -316,6 +327,18 @@ int notify_dll_event_direct(const PEImage & image, void * image_base,
 {
 	invoke_pe_tls_callbacks_direct(image, image_base, event, reserved);
 	return invoke_dll_entry_point_direct(image, image_base, event, reserved);
+}
+
+template <class PEVirtualImage>
+std::unique_ptr<CodeChunk> notify_dll_event_indirect(const PEVirtualImage & image,
+                                                     void                 * image_base,
+                                                     CodeGenerator        & code_generator,
+                                                     DWORD                  event,
+                                                     void                 * reserved = nullptr)
+{
+	const AbsoluteCodeLocation dll_main = pe_image_entry_point(image, image_base);
+	const CallingConvention & stdcall_cconv = code_generator.get_calling_convention("stdcall");
+	return stdcall_cconv.invoke_proc(dll_main, make_proc_params(image_base, event, reserved));
 }
 
 template <class PEImage>

@@ -1,46 +1,8 @@
 #ifndef LOAD_MEMORY_HPP_
 #define LOAD_MEMORY_HPP_
 
-#include <load/export.hpp>
-
-#include <cstddef>
-#include <cstdint>
-#include <future>
-
-namespace load {
-
-class LOAD_EXPORT MemoryBuffer
-{
-public:
-	virtual ~MemoryBuffer() = default;
-	virtual std::size_t read(std::size_t offset, std::size_t size, void * into_buffer) const = 0;
-};
-
-class LOAD_EXPORT MemoryManager
-{
-public:
-	enum MemoryAccess
-	{
-		ReadAccess    = 1 << 0,
-		WriteAccess   = 1 << 1,
-		ExecuteAccess = 1 << 2,
-	};
-
-	virtual ~MemoryManager() = default;
-
-	virtual bool allows_direct_addressing() const = 0;
-
-	virtual void * allocate(std::uintptr_t base, std::size_t size) = 0;
-	virtual void release(void * mem, std::size_t size) = 0;
-
-	virtual void commit(void * mem, std::size_t size) = 0;
-	virtual void decommit(void * mem, std::size_t size) = 0;
-	virtual void set_access(void * mem, std::size_t size, int access) = 0;
-
-	virtual std::size_t copy_from(const void * mem, std::size_t size, void * into_buffer) = 0;
-	virtual std::size_t copy_into(const void * from_buffer, std::size_t size, void * into_mem) = 0;
-};
-
-}
+#include <load/memory/mapped_file.hpp>
+#include <load/memory/memory_buffer.hpp>
+#include <load/memory/memory_manager.hpp>
 
 #endif
